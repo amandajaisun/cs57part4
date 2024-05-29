@@ -1,0 +1,6 @@
+/*
+function param
+declare local
+assign local
+return param
+*/

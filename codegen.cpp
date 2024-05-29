@@ -1,4 +1,4 @@
-#include "part4.h"
+#include "codegen.h"
 
 /* HELPER FUNCTIONS */
 void compute_liveness(LLVMBasicBlockRef bb);
@@ -6,6 +6,17 @@ auto compare_instructions_func = [](LLVMValueRef inst1, LLVMValueRef inst2)
 {
     return liveRange[inst1].second > liveRange[inst2].second;
 };
+
+
+/*
+L1 vs L2
+get operand of branch isntruction
+operand 0 of a branch instruction is the condition
+op 1 %6 = false
+op 2 %9 = true
+*/
+
+//askv all var temp? answer: no, either funcParameter, or constant, or temporary variable
 
 // Emit functions
 void returnStatements(LLVMValueRef inst);
@@ -22,9 +33,11 @@ void createBBLabels(LLVMModuleRef module);
 void printDirectives(LLVMValueRef func) void printFunctionEnd();
 void getOffsetMap(LLVMValueRef func);
 
-/* VARIABLES */
+/* IMPORTANT VARIABLES */
 unordered_map<LLVMValueRef, string> reg_map;
 unordered_map<LLVMValueRef, int> offset_map;
+int localMem;
+LLVMValueRef funcParameter = NULL;
 
 // instructions
 unordered_map<LLVMValueRef, int> inst_index;
@@ -36,7 +49,7 @@ unordered_set<int> no_result_operands = {LLVMBr, LLVMRet, LLVMCall, LLVMStore};
 unordered_set<LLVMOpcode> math_opcodes = {LLVMAdd, LLVMSub, LLVMMul};
 
 // basic block
-unordered_map<LLVMBasicBlockRef, pair<int, LLVMValueRef>> bb_labels; // bb - bb index and first bb instruction //todo change to string
+unordered_map<LLVMBasicBlockRef, string> bb_labels;
 
 void compute_liveness(LLVMBasicBlockRef bb)
 {
@@ -223,34 +236,30 @@ void allocateRegisters(LLVMModuleRef m)
 void codegen(LLVMModuleRef module)
 {
     createBBLabels();
+
     for (LLVMValueRef func = LLVMGetFirstFunction(module); func != NULL; func = LLVMGetNextFunction(func))
     {                          // 1
         printDirectives(func); // 2
         getOffsetMap(func);    // 3
 
-        LLVMValueRef funcParameter; // todo do i need this
-        if (LLVMCountParams(func) > 0)
-        {
-            funcParameter = LLVMGetFirstParam(func);
-        }
-
         // 4-7
         fprintf(stdout, "\t pushl %%ebp\n");
         fprintf(stdout, "\t movl %%esp, %%ebp\n");
-        fprintf(stdout, "\t subl todo penguin,%%esp\n"); // todo local memory
+        fprintf(stdout, "\t subl %d,%%esp\n", localMem);
         fprintf(stdout, "\t  pushl %%ebx\n");
 
         // 8
         for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func); bb != NULL; bb = LLVMGetNextBasicBlock(bb))
         {
-            pair<int, LLVMValueRef> bbInfo = bb_labels[bb];
+            string bb_label = bb_labels[bb];
 
             // 8.1
-            fprintf(stdout, ".L%d:\n", bbInfo.first); // Define label for the basic block
+            fprintf(stdout, ".L%s:\n", bb_label.c_str()); // Define label for the basic block
 
             // 8.2
             for (LLVMValueRef inst = LLVMGetFirstInstruction(bb); inst != NULL; inst = LLVMGetNextInstruction(inst))
             {
+                LLVMDumpValue(inst);
                 switch (LLVMGetInstructionOpcode(inst))
                 {
                 case LLVMRet:
@@ -280,7 +289,8 @@ void codegen(LLVMModuleRef module)
                     aritmeticStatements(inst);
                     break;
                 case LLVMICmp:
-                    compareStatements(inst);
+                    printf("todo");
+                    //compareStatements(inst);
                     break;
                 default:
                     break;
@@ -300,7 +310,7 @@ void createBBLabels(LLVMModuleRef module)
         int bbCount = 0;
         for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func); bb != NULL; bb = LLVMGetNextBasicBlock(bb))
         {
-            bb_labels[bb] = make_pair(bbCount, LLVMGetFirstInstruction(bb));
+            bb_labels[bb] = "BB"+string(bbCount);
             bbCount++;
         }
     }
@@ -325,71 +335,96 @@ void printFunctionEnd()
     fprintf(stdout, "\tret\n");
 }
 
+/*
+stack:
+call operation (func param) = 8
+return address = 4
+then in the negative direction... = 0
+we always make local copy of func param 
+move offset_map so that local copy and func param have same
+
+ex
+define i32 @0(i32 %0) { // offset_map = 8
+  %2 = alloca i32, align 4
+  %3 = alloca i32, align 4
+  %4 = alloca i32, align 4
+  %5 = alloca i32, align 4 // change so that offset_map = 8
+  %6 = alloca i32, align 4
+  store i32 %0, ptr %5, align 4 // change so that offset_map = 8
+> storing %0 in %5
+
+at the store, we check if %0 == %0 (same memory) then we set the offsets
+*/
 void getOffsetMap(LLVMValueRef func)
 {
     offset_map.clear();
+    localMem = 4;
+    if (LLVMCountParams(func) > 0) {
+        funcParameter = LLVMGetFirstParam(func);
+        offset_map[funcParameter] = 8; //when you do call operation, push return addr onto stack
+    }
 
     int offset = 0;
-    for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func); bb != NULL; bb = LLVMGetNextBasicBlock(bb))
-    {
-        for (LLVMValueRef inst = LLVMGetFirstInstruction(bb); inst != NULL; inst = LLVMGetNextInstruction(inst))
-        {
-            if (LLVMGetInstructionOpcode(inst) == LLVMAlloca)
-            {
-                offset_map[inst] = offset;
-                offset += 4;
+    for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func); bb != NULL; bb = LLVMGetNextBasicBlock(bb)) {
+        for (LLVMValueRef inst = LLVMGetFirstInstruction(bb); inst != NULL; inst = LLVMGetNextInstruction(inst)) {
+            if (LLVMIsAAllocaInst(inst)) {
+                localMem += 4;
+                offset_map[inst] = (-1*localMem);
+            }
+            else if (LLVMIsAStoreInst(inst)) { //store i32 %a, ptr %b, align 4
+                LLVMValueRef a = LLVMGetOperand(inst, 0); // local copy of funcParam
+                LLVMValueRef b = LLVMGetOperand(inst, 1);
+                if (a == funcParameter) { 
+                    int x = offset_map[a]; //store operation to make local copy of your parameter
+                    offset_map[b] = x;
+                }
+                else {
+                    int x = offset_map[b]; //ask why swapped here
+                    offset_map[a] = x; 
+                }
+            }
+            else if (LLVMIsALoadInst(inst)) {
+                LLVMValueRef a = LLVMGetOperand(inst, 0);
+                int x = offset_map[a];
+                offset_map[inst] = x;
             }
         }
     }
-    for (pair<LLVMValueRef, string> reg : reg_map)
-    {
-        if (reg.second != "-1")
-        {
-            offset_map[reg.first] = offset;
-            offset += 4;
-        }
-    }
-    stackOffset = offset;
 }
 
 //reg is -1 or spill then var is in memory
-bool isTemporaryVariable(LLVMValueRef v) {
-    return reg_map.find(v) != reg_map.end() && reg_map[v] != "-1";
-}
+
 // like (ret i32 A)
 void returnStatements(LLVMValueRef inst)
 {
     LLVMValueRef A = LLVMGetOperand(inst, 0);
 
     if (LLVMIsConstant(A)) // 1
-    {
         fprintf(stdout, "\tmovl $%lld, %%eax\n", LLVMConstIntGetSExtValue(A));
-    }
+
     // if A is a temporary variable and is in memory
-    else if (isTemporaryVariable(A)) // 2
-    {
-        int k = offset_map[A];
-        fprintf(stdout, "\tmovl %d(%%ebp), %%eax\n", k);
-    }
+    if (reg_map.find(A) != reg_map.end() && reg_map[A] == "-1") // 2 
+        fprintf(stdout, "\tmovl %d(%%ebp), %%eax\n", offset_map[A]);
+    
+
     // if A is a temporary variable and has a physical register
-    else if (reg_map.find(A) != reg_map.end()) // 3
+    if (reg_map.find(A) != reg_map.end() && reg_map[A] != "-1") // 3
     {
         fprintf(stdout, "\tmovl %%%s, %%eax\n", reg_map[A].c_str());
     }
+    
     fprintf(stdout, "\tpopl %%ebx\n"); // 4
     printFuncEnd();                    // 5
 }
 
 // like (%a = load i32, i32* %b)
+// %b is the alloc instruction
+// %a is the load instruction
 void loadStatements(LLVMValueRef a)
 {
-    // %b is the alloc instruction
-    // %a is the load
+    LLVMValueRef b = LLVMGetOperand(a, 0);
 
-
-    LLVMValueRef b = LLVMGetOperand(a, 0); // askv bp here; how to get %b //operand is instructiong we r working on 
-
-    if (isTemporaryVariable(a)) 
+    if (reg_map.find(a) ! = reg_map.end() && reg_map[a] != "-1") 
     {
         string reg = reg_map[a];
         int c = offset_map[b];
@@ -404,32 +439,36 @@ void loadStatements(LLVMValueRef a)
 // 2 operands; since store doesn't have a creation no LHS
 
 // like (store i32  A, i32* %b)
-void storeStatements(LLVMValueRef inst, LLVMValueRef funcParam)
+/*
+todo
+for every instruction
+line adds to # then dump llvmvalueref
+then newline
+*/
+void storeStatements(LLVMValueRef inst, LLVMValueRef funcParameter)
 {
-    LLVMValueRef A = LLVMGetOperand(inst, 0);
-    if (funcParam == A)
-        return;                 // 1
-    else if (LLVMIsConstant(A)) // 2
+    LLVMValueRef a = LLVMGetOperand(inst, 0);
+    LLVMValueRef b = LLVMGetOperand(inst, 0);
+    if (funcParameter == a) return; // 1 ignore the func parameter askv how to check if s/t is a parameter? wd parameter mean
+    else if (LLVMIsConstant(a)) // 2
     {
-        LLVMValueRef b = LLVMGetOperand(inst, 1); // askv how to get %b? not getoperand?
         int c = offset_map[b];
-        fprintf(stdout, "\tmovl $%lld, %d(%%ebp)\n", LLVMConstIntGetSExtValue(A), c);
+        fprintf(stdout, "\tmovl $%lld, %d(%%ebp)\n", LLVMConstIntGetSExtValue(a), c);
         return;
     }
-    else // 3 //askv how to check If A is a temporary variable %a
+    else
     {
         // bp w func parameter %0
-        if (reg_map[A] != "-1")
+        if (reg_map[a] != "-1")
         {
-            string reg = reg_map[A];
-            LLVMValueRef B = LLVMGetOperand(inst, 1);
-            int c = offset_map[B]; // askv what is B vs b? how to get %b?
-            fprintf(stdout, "\tmovl %%%s, %d(%%ebp)\n", reg.c_str(), c);
+            int c = offset_map[b];
+            string reg = reg_map[a];
+            fprintf(stdout, "\tmovl %%%s, %d(%%ebp)\n", reg.c_str(), c); //askv by $A do you mean print LLVMConstIntGetSExtValue(a)?
         }
         else
         {
             LLVMValueRef b = LLVMGetOperand(inst, 1);
-            int c1 = offset_map[A];
+            int c1 = offset_map[a];
             fprintf(stdout, "\tmovl %d(%%ebp), %%eax\n", c1);
 
             int c2 = offset_map[b];
@@ -502,48 +541,54 @@ void callStatements(LLVMValueRef inst, LLVMValueRef func)
     fprintf(stdout, "\tpopl %%ecx\n");
 }
 
-//(br i1 %a, label %b, label %c) or (br label %b)
+// charming
+// (br i1 %a, label %b, label %c) or (br label %b)
+// a is instruction/condition, b and c are basic blocks
 void brStatements(LLVMValueRef inst)
 {
     if (LLVMGetNumOperands(inst) == 1) // 1 if branch is unconditional
     {
         LLVMBasicBlockRef a = (LLVMBasicBlockRef)LLVMGetOperand(inst, 0);
-        pair<int, LLVMValueRef> bbInfo = bb_labels[a];
-        fprintf(stdout, "\tjmp %d\n", bbInfo.first);
+        string L = bb_labels[a];
+        fprintf(stdout, "\tjmp %s\n", L.c_str());
     }
     else if (LLVMGetNumOperands(inst) == 3)
     {
-        LLVMBasicBlockRef b = (LLVMBasicBlockRef)LLVMGetOperand(inst, 1);
-        LLVMBasicBlockRef c = (LLVMBasicBlockRef)LLVMGetOperand(inst, 2);
-        int L1 = bb_labels[b].first;
-        int L2 = bb_labels[c].first;
+        LLVMBasicBlockRef falseBB = (LLVMBasicBlockRef)LLVMGetOperand(inst, 1);
+        LLVMBasicBlockRef trueBB = (LLVMBasicBlockRef)LLVMGetOperand(inst, 2);
 
+        // basic blocks
+        string L1 = bb_labels[trueBB];
+        string L2 = bb_labels[falseBB];
+
+        // predicate
         LLVMValueRef cond = LLVMGetOperand(inst, 0);
         LLVMIntPredicate T = LLVMGetICmpPredicate(cond);
+
         switch (T)
         {
             case LLVMIntSLT:
-                fprintf(stdout, "\tjl %d\n", L1); //askv by emit L1, does that just mean the integer? then change for all below //todo label with string bb1, bb2 etc so L1 should be string
+                fprintf(stdout, "\tjl %s\n", L1.c_str());
                 break;
             case LLVMIntSGT:
-                fprintf(stdout, "\tjg %d\n", L1);
+                fprintf(stdout, "\tjg %s\n", L1.c_str());
                 break;
             case LLVMIntSLE:
-                fprintf(stdout, "\tjle %d\n", L1);
+                fprintf(stdout, "\tjle %s\n", L1.c_str());
                 break;
             case LLVMIntSGE:
-                fprintf(stdout, "\tjge %d\n", L1);
+                fprintf(stdout, "\tjge %s\n", L1.c_str());
                 break;
             case LLVMIntEQ:
-                fprintf(stdout, "\tje %d\n", L1);
+                fprintf(stdout, "\tje %s\n", L1.c_str());
                 break;
             case LLVMIntNE:
-                fprintf(stdout, "\tjne %d\n", L1);
+                fprintf(stdout, "\tjne %s\n", L1.c_str());
                 break;
             default:
                 break;
         }
-        fprintf(stdout, "\tjmp L%d\n", L2);
+        fprintf(stdout, "\tjmp L%s\n", L1.c_str());
     }
     else
     {
@@ -620,37 +665,36 @@ void aritmeticStatements(LLVMValueRef a)
     }
 }
 
+// done
 // (%a = icmp slt A, B)
 // A and B are operands; a is lhs so it's the instruction
 void compareStatements(LLVMValueRef a)
 {
     LLVMValueRef A = LLVMGetOperand(a, 0); //askv on operand v pointer; correct
     LLVMValueRef B = LLVMGetOperand(a, 0);
-    string R = reg_map[A];
-    if (R == "") R = "%eax"; // 7.1
-    if (LLVMIsConstant(B)) fprintf(stdout, "\tmovl %s,%s\n", LLVMConstIntGetSExtValue(B), R.c_str()); //askv what does $B mean? actually PRINT $B
-    if (isTemporaryVariable(B)) {
-        if (reg_map[B])
-    }
-    //penguin
 
-    // Let R be the register for %a. If %a has a physical register %exx assigned to it, then R  is %exx, else R is %eax.
-    //  if B is a constant
-    // emit movl $B, R
-    //  if B is a temporary variable
-    // if B has physical register %eyy assigned to it:
-    // emit movl %eyy, R  (do not emit if both registers are the same)
-    // if B is in memory:
-    // get offset n of B
-    // emit movl n(%ebp), R
-    //  if A is a constant
-    // emit cmpl $A, R
-    // if A is a temporary variable and has physical register %ezz assigned to it:
-    // emit cmpl %ezz, R
-    // if A is a temporary variable and  does not have a physical register assigned to it:
-    // get offset m of A
-    // emit cmpl m(%ebp), R
-    // if %a is in memory
-    // get offset k of %a
-    // emit movl %eax, k(%ebp)
+    //7.1
+    if (reg_map.find(a) == reg_map.end()) printf("error compareStatements\n");
+    string R = reg_map[a];
+    if (R == "-1") R = "%eax"; 
+
+    if (LLVMIsConstant(B)) // 7.2
+        fprintf(stdout, "\tmovl $%lld, %s\n", LLVMConstIntGetSExtValue(B), R.c_str());
+    if (funcParameter != B && reg_map.find(B) != reg_map.end()) { // 7.3 if B is a temporary variable
+        if (reg_map[B] != "-1" && reg_map[B] != R) //7.3.1
+            fprintf(stdout, "\tmovl $%s, %s\n", reg_map[B].c_str(), R.c_str());
+        else if (reg_map[B] == "-1") //7.3.2
+            fprintf(stdout, "\tmovl %d(%ebp), %s\n", offset_map[B].c_str(), R.c_str());
+    }
+
+    if (LLVMIsConstant(A)) fprintf(stdout, "\tcmpl $%lld, %s\n", LLVMConstIntGetSExtValue(A), R.c_str());
+    else if (funcParameter != A){
+        if (reg_map.find(A) != reg_map.end() && reg_map[A] != "-1")  // 5
+            fprintf(stdout, "\tcmpl $%s, %s\n", reg_map[A].c_str(), R.c_str()); 
+        else if (reg_map.find(A) != reg_map.end() && reg_map[A] == "-1") // 6 does not have a physical register assigned
+            fprintf(stdout, "\tcmpl %d(%ebp), R\n", offset_map[A], R.c_str());
+    }
+
+    if (reg_map.find(a) != reg_map.end() && reg_map[a] == "-1") 
+        fprintf(stdout, "\tmovl %eax, %d(%ebp)\n", offset_map[a]);
 }
