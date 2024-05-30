@@ -265,9 +265,12 @@ void codegen(LLVMModuleRef module)
 
     for (LLVMValueRef func = LLVMGetFirstFunction(module); func != NULL; func = LLVMGetNextFunction(func))
     {                          // 1
-        printDirectives(func); // 2, 4-7
-        getOffsetMap(func);    // 3
+        LLVMBasicBlockRef aa = LLVMGetFirstBasicBlock(func);
+        if (aa == NULL) continue;
 
+        getOffsetMap(func);    // 3
+        printDirectives(func); // 2, 4-7
+        
         // 8
         for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func); bb != NULL; bb = LLVMGetNextBasicBlock(bb))
         {
@@ -279,7 +282,7 @@ void codegen(LLVMModuleRef module)
             // 8.2
             for (LLVMValueRef inst = LLVMGetFirstInstruction(bb); inst != NULL; inst = LLVMGetNextInstruction(inst))
             {
-                LLVMDumpValue(inst);
+                printf("\n#%s\n", LLVMPrintValueToString(inst)); //bp
                 switch (LLVMGetInstructionOpcode(inst))
                 {
                 case LLVMRet:
@@ -349,8 +352,6 @@ void printDirectives(LLVMValueRef func)
 
 void printFunctionEnd()
 {
-    fprintf(stdout, "\tmovl %%ebp, %%esp\n");
-    fprintf(stdout, "\tpopl %%ebp\n");
     fprintf(stdout, "\tleave\n");
     fprintf(stdout, "\tret\n");
 }
@@ -480,7 +481,6 @@ void storeStatements(LLVMValueRef store_inst, LLVMValueRef funcParameter)
     return;
 }
 
-// done? but askv
 // like ( %a = call type @func(P)) or (call type @func(P))
 void callStatements(LLVMValueRef inst, LLVMValueRef func)
 {
@@ -511,8 +511,8 @@ void callStatements(LLVMValueRef inst, LLVMValueRef func)
     if (LLVMCountParams(func) == 1) // 5
         fprintf(stdout, "\taddl $4, %%esp\n");
 
-    // askv if Instr is of the form (%a = call type @func())
-    if (LLVMGetNumOperands(inst) == 1)
+    // askv if Instr is of the form (%a = call type @func()) -> if it has a use (read) or not (print) check if it has a use LLVMGetFirstUse
+    if (LLVMGetFirstUse(inst) != NULL)
     {
         LLVMValueRef a = LLVMGetOperand(inst, 0);
         if (reg_map.find(a) != reg_map.end() && reg_map[a] != "-1") // if %a has a physical register %exx assigned to it
@@ -575,7 +575,7 @@ void brStatements(LLVMValueRef inst)
             default:
                 break;
         }
-        fprintf(stdout, "\tjmp %s\n", L1.c_str());
+        fprintf(stdout, "\tjmp %s\n", L2.c_str());
     }
     else
     {
@@ -670,13 +670,13 @@ void compareStatements(LLVMValueRef a)
         fprintf(stdout, "\tmovl $%lld, %%%s\n", LLVMConstIntGetSExtValue(B), R.c_str());
     else if (funcParameter != B && reg_map.find(B) != reg_map.end()) { // 7.3 if B is a temporary variable
         if (reg_map[B] != "-1" && reg_map[B] != R) //7.3.1
-            fprintf(stdout, "\tmovl %%%s, %%%s\n", reg_map[B].c_str(), R.c_str()); //askv just checking all ebx etc should have %5
+            fprintf(stdout, "\tmovl %%%s, %%%s\n", reg_map[B].c_str(), R.c_str()); //askv just checking all ebx etc should have %5 YESyES
         else if (reg_map[B] == "-1") //7.3.2
             fprintf(stdout, "\tmovl %d(%ebp), %%%s\n", offset_map[B], R.c_str());
     }
 
     if (LLVMIsConstant(A)) 
-        fprintf(stdout, "\tcmpl $%lld, %%%s\n", LLVMConstIntGetSExtValue(A), R.c_str()); //askv should R have % too? i added to add here 
+        fprintf(stdout, "\tcmpl $%lld, %%%s\n", LLVMConstIntGetSExtValue(A), R.c_str()); //askv should R have % too? i added to add here  YESYEA
     else if (funcParameter != A){
         if (reg_map.find(A) != reg_map.end() && reg_map[A] != "-1")  // 5
             fprintf(stdout, "\tcmpl %%%s, %%%s\n", reg_map[A].c_str(), R.c_str());
