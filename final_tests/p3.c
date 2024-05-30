@@ -2,10 +2,11 @@ extern int read();
 extern void print(int);
 
 int func(int n){
-	int sum = 0;
+	int sum;
 	int i;
 	int a;
 	i = 0;
+	sum = 0;
 	
 	while (i < n){ 
 		a = read();
