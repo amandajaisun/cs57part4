@@ -1,13 +1,13 @@
 # Variables
 clang_flags = `llvm-config-15 --cxxflags --ldflags --libs core` -I /usr/include/llvm-c-15/ -ggdb -gdwarf-4 -g
-test_file = ./final_tests/p1_opt.ll
+version = p4
 output = test_file_output.txt
 folder = final_tests/
 
 all: codegenrun.cpp codegen.cpp
 	clang++ ${clang_flags} codegenrun.cpp codegen.cpp -o codegenrun.out 
-	clang ${folder}p1.c ${folder}main.c -o program
-	./codegenrun.out ${test_file} > A.s
+	gcc -o program ${folder}main.c ${folder}${version}.c
+	./codegenrun.out ${folder}${version}_opt.ll > A.s
 	gcc -g -m32 A.s -o A ${folder}main.c
 
 runa:

@@ -149,6 +149,18 @@ void allocateRegisters(LLVMModuleRef m)
     for (LLVMValueRef func = LLVMGetFirstFunction(m); func != NULL; func = LLVMGetNextFunction(func))
     {
         for (LLVMBasicBlockRef block = LLVMGetFirstBasicBlock(func); block != NULL; block = LLVMGetNextBasicBlock(block))
+        {
+            for (LLVMValueRef Instr = LLVMGetFirstInstruction(block); Instr != NULL; Instr = LLVMGetNextInstruction(Instr))
+            {
+                reg_map[Instr] = "-1";
+                
+            }
+        }
+    }
+
+    for (LLVMValueRef func = LLVMGetFirstFunction(m); func != NULL; func = LLVMGetNextFunction(func))
+    {
+        for (LLVMBasicBlockRef block = LLVMGetFirstBasicBlock(func); block != NULL; block = LLVMGetNextBasicBlock(block))
         { // 1.1
 
             unordered_map<string, bool> registerStatus;
@@ -385,7 +397,6 @@ void getOffsetMap(LLVMValueRef func)
         offset_map[funcParameter] = 8; //when you do call operation, push return addr onto stack
     }
 
-    int offset = 0;
     for (LLVMBasicBlockRef bb = LLVMGetFirstBasicBlock(func); bb != NULL; bb = LLVMGetNextBasicBlock(bb)) {
         for (LLVMValueRef inst = LLVMGetFirstInstruction(bb); inst != NULL; inst = LLVMGetNextInstruction(inst)) {
             if (LLVMIsAAllocaInst(inst)) {
@@ -400,7 +411,7 @@ void getOffsetMap(LLVMValueRef func)
                     offset_map[b] = x;
                 }
                 else {
-                    int x = offset_map[b]; //ask why swapped here
+                    int x = offset_map[b];
                     offset_map[a] = x;
                 }
             }
@@ -410,6 +421,15 @@ void getOffsetMap(LLVMValueRef func)
                 offset_map[inst] = x;
             }
         }
+    }
+    printf("#offset map\n");
+    for (const auto& pair : offset_map) {
+        LLVMValueRef key = pair.first;
+        int value = pair.second;
+        
+        // Printing the key and value
+        
+        printf("#%s\t%d\n", LLVMPrintValueToString(key), value);
     }
 }
 
@@ -486,17 +506,20 @@ void callStatements(LLVMValueRef inst, LLVMValueRef func)
 {
     fprintf(stdout, "\tpushl %%ecx\n");
     fprintf(stdout, "\tpushl %%edx\n");
-
+    // fprintf(stdout, "\n#bughunt %d\n", LLVMCountParams(func)); 
     // 3, if func has a P
-    if (LLVMCountParams(func) == 1)
+    if (LLVMCountParams(inst) == 1) //amanda big bp!! ask stefel
     {
-        LLVMValueRef P = LLVMGetParam(func, 0);
+        LLVMValueRef P = LLVMGetParam(inst, 0);
 
         if (LLVMIsConstant(P))
             fprintf(stdout, "\tpushl $%lld\n", LLVMConstIntGetSExtValue(P));
         else // if P is a temporary variable %p
         {
-            if (reg_map.find(P) != reg_map.end() && reg_map[P] != "-1")
+            // printf("\n#bughunt %s\n", LLVMPrintValueToString(inst));
+            // printf("\n#bughunt %s\n", reg_map[P].c_str());
+
+            if (reg_map.find(P) != reg_map.end() && reg_map[P] != "-1")  //bp
                 fprintf(stdout, "\tpushl %%%s\n", reg_map[P].c_str());
             else if (reg_map.find(P) != reg_map.end()) 
             {
@@ -514,7 +537,7 @@ void callStatements(LLVMValueRef inst, LLVMValueRef func)
     // askv if Instr is of the form (%a = call type @func()) -> if it has a use (read) or not (print) check if it has a use LLVMGetFirstUse
     if (LLVMGetFirstUse(inst) != NULL)
     {
-        LLVMValueRef a = LLVMGetOperand(inst, 0);
+        LLVMValueRef a = inst;
         if (reg_map.find(a) != reg_map.end() && reg_map[a] != "-1") // if %a has a physical register %exx assigned to it
             fprintf(stdout, "\tmovl %%eax, %%%s\n", reg_map[a].c_str());
         
@@ -522,7 +545,7 @@ void callStatements(LLVMValueRef inst, LLVMValueRef func)
             fprintf(stdout, "\tmovl %%eax, %d(%%ebp)\n", offset_map[a]);
         
         else 
-            printf(":: error in callStatements");
+            printf(":: error in callStatements %s", LLVMPrintValueToString(a));
     }
     fprintf(stdout, "\tpopl %%edx\n");
     fprintf(stdout, "\tpopl %%ecx\n");
@@ -672,7 +695,7 @@ void compareStatements(LLVMValueRef a)
         if (reg_map[B] != "-1" && reg_map[B] != R) //7.3.1
             fprintf(stdout, "\tmovl %%%s, %%%s\n", reg_map[B].c_str(), R.c_str()); //askv just checking all ebx etc should have %5 YESyES
         else if (reg_map[B] == "-1") //7.3.2
-            fprintf(stdout, "\tmovl %d(%ebp), %%%s\n", offset_map[B], R.c_str());
+            fprintf(stdout, "\tmovl %d(%%ebp), %%%s\n", offset_map[B], R.c_str());
     }
 
     if (LLVMIsConstant(A)) 
@@ -681,9 +704,9 @@ void compareStatements(LLVMValueRef a)
         if (reg_map.find(A) != reg_map.end() && reg_map[A] != "-1")  // 5
             fprintf(stdout, "\tcmpl %%%s, %%%s\n", reg_map[A].c_str(), R.c_str());
         else if (reg_map.find(A) != reg_map.end() && reg_map[A] == "-1") // 6 does not have a physical register assigned
-            fprintf(stdout, "\tcmpl %d(%ebp), %%%s\n", offset_map[A], R.c_str());
+            fprintf(stdout, "\tcmpl %d(%%ebp), %%%s\n", offset_map[A], R.c_str());
     }
 
     if (reg_map.find(a) != reg_map.end() && reg_map[a] == "-1")
-        fprintf(stdout, "\tmovl %eax, %d(%ebp)\n", offset_map[a]);
+        fprintf(stdout, "\tmovl %%eax, %d(%%ebp)\n", offset_map[a]);
 }
