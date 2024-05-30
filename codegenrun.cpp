@@ -13,7 +13,7 @@ int main(int totalArgs, char **args)
     }
 
     // Creation of module and builder
-    LLVMModuleRef myModule = LLVMModuleCreateWithName("test");
+    LLVMModuleRef myModule = LLVMModuleCreateWithName("AmandaModule");
     LLVMBuilderRef myBuilder = LLVMCreateBuilder();
 
     // Loading IR file 
@@ -35,7 +35,7 @@ int main(int totalArgs, char **args)
         return 1;
     }
 
-    registerAllocation(myModule);
+    allocateRegisters(myModule);
     codegen(myModule);
 
     return 0; 

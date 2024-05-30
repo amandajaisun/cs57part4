@@ -15,8 +15,9 @@
 #include <set>
 #include <stdio.h>
 #include <string>
+#include <algorithm>
 
-#include"ast.h"
+#include "ast.h"
 
 using namespace std;
 
