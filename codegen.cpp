@@ -8,7 +8,7 @@ op 1 %6 = false
 op 2 %9 = true
 
 OPERAND VS INSTRUCTION
-%6 = load i32, ptr %3, align 4 todo
+%6 = load i32, ptr %3, align 4 
     1 operand; %6 is the instruction itself
 
 store i32 %0, ptr %2, align 4
@@ -25,12 +25,7 @@ is this how to check if P is a temporary variable and has a physical register
         checking physical register is if i assigned something
 
         IF YOU HAVE IN REGISTER it's not being used from the memory
-    
 
-todo
-for every instruction
-line adds to # then dump llvmvalueref
-then newline
 */
 
 //reg is -1 or spill then var is in memory
@@ -53,7 +48,7 @@ void printFunctionEnd();
 void getOffsetMap(LLVMValueRef func);
 
 /* IMPORTANT VARIABLES */
-unordered_map<LLVMValueRef, string> reg_map; //todo make reg_map[inst] = -1 for all inst
+unordered_map<LLVMValueRef, string> reg_map;
 unordered_map<LLVMValueRef, int> offset_map;
 int localMem;
 LLVMValueRef funcParameter = NULL;
@@ -508,9 +503,9 @@ void callStatements(LLVMValueRef inst, LLVMValueRef func)
     fprintf(stdout, "\tpushl %%edx\n");
     // fprintf(stdout, "\n#bughunt %d\n", LLVMCountParams(func)); 
     // 3, if func has a P
-    if (LLVMGetNumOperands(inst) == 2) //amanda big bp!! ask stefel int LLVMGetNumOperands(LLVMValueRef Val);
+    if (LLVMGetNumOperands(inst) == 2)
     {
-        LLVMValueRef P = LLVMGetOperand(inst, 1);
+        LLVMValueRef P = LLVMGetOperand(inst, 0);
 
         if (LLVMIsConstant(P))
             fprintf(stdout, "\tpushl $%lld\n", LLVMConstIntGetSExtValue(P));
