@@ -1,6 +1,6 @@
 # Variables
 clang_flags = `llvm-config-15 --cxxflags --ldflags --libs core` -I /usr/include/llvm-c-15/ -ggdb -gdwarf-4 -g
-version = p4
+version = p2
 output = test_file_output.txt
 folder = final_tests/
 
@@ -17,4 +17,4 @@ runb:
 	./program > B.txt
 
 clean:
-	rm -f *.o codegenrun.out program A
+	rm -f *.o codegenrun.out program A A.s A.txt B.txt 

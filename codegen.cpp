@@ -26,7 +26,7 @@ is this how to check if P is a temporary variable and has a physical register
 
         IF YOU HAVE IN REGISTER it's not being used from the memory
     
-/*
+
 todo
 for every instruction
 line adds to # then dump llvmvalueref
@@ -508,9 +508,9 @@ void callStatements(LLVMValueRef inst, LLVMValueRef func)
     fprintf(stdout, "\tpushl %%edx\n");
     // fprintf(stdout, "\n#bughunt %d\n", LLVMCountParams(func)); 
     // 3, if func has a P
-    if (LLVMCountParams(inst) == 1) //amanda big bp!! ask stefel
+    if (LLVMGetNumOperands(inst) == 2) //amanda big bp!! ask stefel int LLVMGetNumOperands(LLVMValueRef Val);
     {
-        LLVMValueRef P = LLVMGetParam(inst, 0);
+        LLVMValueRef P = LLVMGetOperand(inst, 1);
 
         if (LLVMIsConstant(P))
             fprintf(stdout, "\tpushl $%lld\n", LLVMConstIntGetSExtValue(P));
@@ -526,12 +526,13 @@ void callStatements(LLVMValueRef inst, LLVMValueRef func)
                 int k = offset_map[P];
                 fprintf(stdout, "\tpushl %d(%%ebp)\n", k);
             }
+
         }
     }
 
     fprintf(stdout, "\tcall func\n"); // 4
     
-    if (LLVMCountParams(func) == 1) // 5
+    if (LLVMCountParams(func) == 2) // 5
         fprintf(stdout, "\taddl $4, %%esp\n");
 
     // askv if Instr is of the form (%a = call type @func()) -> if it has a use (read) or not (print) check if it has a use LLVMGetFirstUse
