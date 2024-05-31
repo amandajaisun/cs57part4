@@ -1,0 +1,5 @@
+final_tests/
+.vscode
+simpletest.c
+ast.c
+ast.h
