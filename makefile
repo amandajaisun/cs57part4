@@ -1,6 +1,6 @@
 # Variables
 clang_flags = `llvm-config-15 --cxxflags --ldflags --libs core` -I /usr/include/llvm-c-15/ -ggdb -gdwarf-4 -g
-version = p2
+version = p5
 output = test_file_output.txt
 folder = final_tests/
 
