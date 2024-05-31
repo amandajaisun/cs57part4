@@ -352,10 +352,10 @@ void createBBLabels(LLVMModuleRef module)
 
 void printDirectives(LLVMValueRef func)
 {
-    fprintf(stdout, ".section .text\n");
-    fprintf(stdout, ".globl %s\n", LLVMGetValueName(func));
-    fprintf(stdout, ".type %s, @function\n", LLVMGetValueName(func));
-    fprintf(stdout, "%s:\n", LLVMGetValueName(func));
+    fprintf(stdout, ".file \"\"\n");
+    fprintf(stdout, ".globl func\n");
+    fprintf(stdout, ".type func, @function\n");
+    fprintf(stdout, "func:\n");
     fprintf(stdout, "\tpushl %%ebp\n");
     fprintf(stdout, "\tmovl %%esp, %%ebp\n");
     fprintf(stdout, "\tsubl $%d, %%esp\n", localMem);
