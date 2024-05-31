@@ -1,36 +1,5 @@
 #include "codegen.h"
 
-/*
-L1 vs L2
-get operand of branch isntruction
-operand 0 of a branch instruction is the condition
-op 1 %6 = false
-op 2 %9 = true
-
-OPERAND VS INSTRUCTION
-%6 = load i32, ptr %3, align 4 
-    1 operand; %6 is the instruction itself
-
-store i32 %0, ptr %2, align 4
-    2 operands; since store doesn't have a creation no LHS
-
-is this how to check if P is a temporary variable and has a physical register
-    temp var is related to llvm
-    llvm has no physical registers
-    when translating into machine code, we assign a temp variable a physical register
- 
-        check if the parameter P is a temporary var %p
-        aka check if it's an instruction
-
-        checking physical register is if i assigned something
-
-        IF YOU HAVE IN REGISTER it's not being used from the memory
-
-*/
-
-//reg is -1 or spill then var is in memory
-// are all var temp? answer: no, either funcParameter, or constant, or temporary variable
-
 // Emit functions
 void returnStatements(LLVMValueRef inst);
 void loadStatements(LLVMValueRef inst);
@@ -178,17 +147,16 @@ void allocateRegisters(LLVMModuleRef m)
                     for (int index = 0; index < LLVMGetNumOperands(Instr); index++)
                     {
 
-                        LLVMValueRef currentOperand = LLVMGetOperand(Instr, index);
+                        LLVMValueRef curr_operand = LLVMGetOperand(Instr, index);
 
                         // 1.4.2.1
-                        if (live_range[currentOperand].second == inst_index[Instr] && reg_map.find(currentOperand) != reg_map.end())
-                            registerStatus[reg_map[currentOperand]] = false;
+                        if (live_range[curr_operand].second == inst_index[Instr] && reg_map.find(curr_operand) != reg_map.end())
+                            registerStatus[reg_map[curr_operand]] = false;
                     }
                 }
                 else
                 {
                     string freeRegister = get_free_register(registerStatus);
-
                     // 1.4.3.1
                     if ((math_opcodes.find(currentOpcode) != math_opcodes.end()) &&
                         (reg_map.find(LLVMGetOperand(Instr, 0)) != reg_map.end()) &&
@@ -209,7 +177,7 @@ void allocateRegisters(LLVMModuleRef m)
                             }
                         }
                     }
-                    else if (!freeRegister.empty()) // 1.4.3.2
+                    else if (freeRegister != "") // 1.4.3.2
                     {
                         // 1.4.3.2.1
                         reg_map[Instr] = freeRegister;
@@ -220,12 +188,12 @@ void allocateRegisters(LLVMModuleRef m)
                         // 1.4.3.2.3
                         for (int index = 0; index < LLVMGetNumOperands(Instr); index++)
                         {
-                            LLVMValueRef currentOperand = LLVMGetOperand(Instr, index);
-                            if (reg_map.find(currentOperand) != reg_map.end())
+                            LLVMValueRef curr_operand = LLVMGetOperand(Instr, index);
+                            if (reg_map.find(curr_operand) != reg_map.end())
                             {
-                                if (live_range[currentOperand].second == inst_index[Instr])
+                                if (live_range[curr_operand].second == inst_index[Instr])
                                 {
-                                    registerStatus[reg_map[currentOperand]] = false;
+                                    registerStatus[reg_map[curr_operand]] = false;
                                 }
                             }
                         }
@@ -250,12 +218,12 @@ void allocateRegisters(LLVMModuleRef m)
                         // If the live range of any operand of Instr ends,
                         for (int index = 0; index < LLVMGetNumOperands(Instr); index++)
                         {
-                            LLVMValueRef currentOperand = LLVMGetOperand(Instr, index);
-                            if (live_range[currentOperand].second == inst_index[Instr]) // If the live range of any operand of Instr ends
+                            LLVMValueRef curr_operand = LLVMGetOperand(Instr, index);
+                            if (live_range[curr_operand].second == inst_index[Instr]) // If the live range of any operand of Instr ends
                             {
-                                if (reg_map.find(currentOperand) != reg_map.end()) // and it has a physical register P assigned to it,
+                                if (reg_map.find(curr_operand) != reg_map.end()) // and it has a physical register P assigned to it,
                                 {
-                                    registerStatus[reg_map[currentOperand]] = false; // then add P to the available set of registers.
+                                    registerStatus[reg_map[curr_operand]] = false; // then add P to the available set of registers.
                                 }
                             }
                         }
@@ -292,14 +260,17 @@ void codegen(LLVMModuleRef module)
                 printf("\n#%s\n", LLVMPrintValueToString(inst)); //bp
                 switch (LLVMGetInstructionOpcode(inst))
                 {
-                case LLVMRet:
-                    returnStatements(inst);
+                case LLVMAlloca:
+                    break;
+                
+                case LLVMStore:
+                    storeStatements(inst, funcParameter);
                     break;
                 case LLVMLoad:
                     loadStatements(inst);
                     break;
-                case LLVMStore:
-                    storeStatements(inst, funcParameter);
+                case LLVMRet:
+                    returnStatements(inst);
                     break;
                 case LLVMCall:
                     callStatements(inst, func);
@@ -307,7 +278,9 @@ void codegen(LLVMModuleRef module)
                 case LLVMBr:
                     brStatements(inst);
                     break;
-                case LLVMAlloca:
+                
+                case LLVMICmp:
+                    compareStatements(inst);
                     break;
                 case LLVMAdd:
                     mathStatements(inst);
@@ -318,9 +291,7 @@ void codegen(LLVMModuleRef module)
                 case LLVMMul:
                     mathStatements(inst);
                     break;
-                case LLVMICmp:
-                    compareStatements(inst);
-                    break;
+                
                 default:
                     break;
                 }

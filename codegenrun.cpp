@@ -9,11 +9,11 @@ int main(int totalArgs, char **args)
     if (totalArgs < 2)
     {
         printf("Usage: %s <filename>\n", args[0]);
-        return 1;
+        return -1;
     }
 
     // Creation of module and builder
-    LLVMModuleRef myModule = LLVMModuleCreateWithName("AmandaModule");
+    LLVMModuleRef myModule = LLVMModuleCreateWithName("myModule");
     LLVMBuilderRef myBuilder = LLVMCreateBuilder();
 
     // Loading IR file 
@@ -22,17 +22,17 @@ int main(int totalArgs, char **args)
 
     if (LLVMCreateMemoryBufferWithContentsOfFile(args[1], &memoryBuffer, &errorMsg))
     {
-        fprintf(stderr, "error loading file %s: %s\n", args[1], errorMsg);
+        printf("error LLVMCreateMemoryBufferWithContentsOfFile");
         LLVMDisposeMessage(errorMsg);
-        return 1;
+        return -1;
     }
 
     // Parsing the in-memory IR
     if (LLVMParseIRInContext(LLVMGetGlobalContext(), memoryBuffer, &myModule, &errorMsg))
     {
-        fprintf(stderr, "error parsing IR: %s\n", errorMsg);
+        printf("error LLVMParseIRInContext");
         LLVMDisposeMessage(errorMsg);
-        return 1;
+        return -1;
     }
 
     allocateRegisters(myModule);
